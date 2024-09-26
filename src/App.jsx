@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import Horn from '/horn.mp3';  // Import horn sound file
+import Horn from '/horn.mp3';
 import './App.css';
 
 function App() {
@@ -12,14 +12,17 @@ function App() {
     const [hornBuffer, setHornBuffer] = useState(null); // Holds the car horn buffer
 
     useEffect(() => {
-        // Load the car horn sound using imported file
-        fetch(Horn)
+        // Load the car horn sound from the public folder
+        fetch('/horn.mp3')
             .then(response => response.arrayBuffer())
             .then(arrayBuffer => {
                 const audioContext = new (window.AudioContext || window.webkitAudioContext)();
-                return audioContext.decodeAudioData(arrayBuffer);
+                return audioContext.decodeAudioData(arrayBuffer).then(decodedData => {
+                    setHornBuffer(decodedData);
+                    // Create an analyser for the horn audio
+                    hornAnalyserRef.current = audioContext.createAnalyser();
+                });
             })
-            .then(decodedData => setHornBuffer(decodedData))
             .catch(error => setMessage('Error loading car horn audio'));
     }, []);
 
@@ -56,21 +59,23 @@ function App() {
 
     const compareHornAndMic = () => {
         const micDataArray = new Float32Array(micAnalyserRef.current.fftSize);
-        const hornDataArray = new Float32Array(hornAnalyserRef.current.fftSize);
+        const hornDataArray = new Float32Array(hornAnalyserRef.current.fftSize); // Ensure this line is correctly placed
 
         const detectHorn = () => {
             micAnalyserRef.current.getFloatTimeDomainData(micDataArray);
-            hornAnalyserRef.current.getFloatTimeDomainData(hornDataArray);
+            if (hornAnalyserRef.current) {
+                hornAnalyserRef.current.getFloatTimeDomainData(hornDataArray);
 
-            const micMaxAmplitude = Math.max(...micDataArray);
-            const hornMaxAmplitude = Math.max(...hornDataArray);
+                const micMaxAmplitude = Math.max(...micDataArray);
+                const hornMaxAmplitude = Math.max(...hornDataArray);
 
-            // You can refine this detection logic further for better accuracy
-            if (Math.abs(micMaxAmplitude - hornMaxAmplitude) < 0.1) {
-                playAlarm();
-                setMessage('Car horn detected!');
-            } else {
-                requestAnimationFrame(detectHorn);
+                // You can refine this detection logic further for better accuracy
+                if (Math.abs(micMaxAmplitude - hornMaxAmplitude) < 0.1) {
+                    playAlarm();
+                    setMessage('Car horn detected!');
+                } else {
+                    requestAnimationFrame(detectHorn);
+                }
             }
         };
         detectHorn();
@@ -84,14 +89,13 @@ function App() {
 
     return (
         <div>
-            <h1 id='heading'>Car Horn Detector</h1>
-            <p id='error'><i>{message}</i></p>
+            <h1>Car Horn Detector</h1>
+            <p><i>{message}</i></p>
             {!listening ? (
-                <div id='button' onClick={startListening}><p>Start Listening</p></div>
+                <div onClick={startListening}><p>Start Listening</p></div>
             ) : (
-                <div id='button' onClick={stopListening}><p>Stop Listening</p></div>
+                <div onClick={stopListening}><p>Stop Listening</p></div>
             )}
-            <audio ref={audioRef} src="/alarm.mp3" preload="auto"></audio>
         </div>
     );
 }
