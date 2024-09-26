@@ -1,23 +1,29 @@
 import React, { useState, useRef, useEffect } from 'react';
+import Horn from '/horn.mp3';  // Import horn sound file
 import './App.css';
-import ml5 from 'ml5';
 
 function App() {
     const [listening, setListening] = useState(false);
     const [message, setMessage] = useState('');
     const audioRef = useRef(null);  // Reference to play the alarm
-    const classifierRef = useRef(null); // Reference for the sound classifier
+    const audioContextRef = useRef(null);
+    const micAnalyserRef = useRef(null); // Reference for mic audio analysis
+    const hornAnalyserRef = useRef(null); // Reference for horn mp3 analysis
+    const [hornBuffer, setHornBuffer] = useState(null); // Holds the car horn buffer
 
     useEffect(() => {
-        // Load the sound classification model
-        classifierRef.current = ml5.soundClassifier('SpeechCommands18w', modelReady);
+        // Load the car horn sound using imported file
+        fetch(Horn)
+            .then(response => response.arrayBuffer())
+            .then(arrayBuffer => {
+                const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+                return audioContext.decodeAudioData(arrayBuffer);
+            })
+            .then(decodedData => setHornBuffer(decodedData))
+            .catch(error => setMessage('Error loading car horn audio'));
     }, []);
 
-    const modelReady = () => {
-        console.log('Model Loaded!');
-    };
-
-    const startListening = () => {
+    const startListening = async () => {
         if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
             setMessage('Microphone access not supported');
             return;
@@ -26,34 +32,48 @@ function App() {
         setMessage('Listening for car horn...');
         setListening(true);
 
-        // Start the sound classification
-        classifierRef.current.classify(gotResults);
+        audioContextRef.current = new (window.AudioContext || window.webkitAudioContext)();
+        micAnalyserRef.current = audioContextRef.current.createAnalyser();
+
+        try {
+            const micStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+            const micSource = audioContextRef.current.createMediaStreamSource(micStream);
+            micSource.connect(micAnalyserRef.current);
+            compareHornAndMic(); // Start comparing mic input to the car horn sound
+        } catch (error) {
+            setMessage('Could not access microphone');
+            console.error(error);
+        }
     };
 
     const stopListening = () => {
         setListening(false);
         setMessage('Stopped listening');
-        // Stop the classifier
-        classifierRef.current.stop();
+        if (audioContextRef.current) {
+            audioContextRef.current.close();
+        }
     };
 
-    const gotResults = (error, results) => {
-        if (error) {
-            console.error(error);
-            return;
-        }
+    const compareHornAndMic = () => {
+        const micDataArray = new Float32Array(micAnalyserRef.current.fftSize);
+        const hornDataArray = new Float32Array(hornAnalyserRef.current.fftSize);
 
-        // Assuming the first result is the most confident
-        const label = results[0].label;
-        const confidence = results[0].confidence;
+        const detectHorn = () => {
+            micAnalyserRef.current.getFloatTimeDomainData(micDataArray);
+            hornAnalyserRef.current.getFloatTimeDomainData(hornDataArray);
 
-        // Check if the detected sound is a car horn (you may need to train the model for specific sounds)
-        if (label === 'car horn' && confidence > 0.5) { // Adjust confidence threshold as needed
-            playAlarm();
-            setMessage('Car horn detected!');
-        } else {
-            setMessage('Listening for car horn...');
-        }
+            const micMaxAmplitude = Math.max(...micDataArray);
+            const hornMaxAmplitude = Math.max(...hornDataArray);
+
+            // You can refine this detection logic further for better accuracy
+            if (Math.abs(micMaxAmplitude - hornMaxAmplitude) < 0.1) {
+                playAlarm();
+                setMessage('Car horn detected!');
+            } else {
+                requestAnimationFrame(detectHorn);
+            }
+        };
+        detectHorn();
     };
 
     const playAlarm = () => {
@@ -67,7 +87,7 @@ function App() {
             <h1 id='heading'>Car Horn Detector</h1>
             <p id='error'><i>{message}</i></p>
             {!listening ? (
-              <div id='button' onClick={startListening}><p>Start Listening</p></div>
+                <div id='button' onClick={startListening}><p>Start Listening</p></div>
             ) : (
                 <div id='button' onClick={stopListening}><p>Stop Listening</p></div>
             )}
