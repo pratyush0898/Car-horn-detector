@@ -1,63 +1,59 @@
-import React, { useState, useRef } from 'react';
-import './App.css'
+import React, { useState, useRef, useEffect } from 'react';
+import './App.css';
+import ml5 from 'ml5';
 
 function App() {
     const [listening, setListening] = useState(false);
     const [message, setMessage] = useState('');
     const audioRef = useRef(null);  // Reference to play the alarm
-    let audioContext = null;
-    let microphoneStream = null;
-    let analyser = null;
+    const classifierRef = useRef(null); // Reference for the sound classifier
 
-    const startListening = async () => {
+    useEffect(() => {
+        // Load the sound classification model
+        classifierRef.current = ml5.soundClassifier('SpeechCommands18w', modelReady);
+    }, []);
+
+    const modelReady = () => {
+        console.log('Model Loaded!');
+    };
+
+    const startListening = () => {
         if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-            setMessage('Microphone access not supported*', error);
+            setMessage('Microphone access not supported');
             return;
         }
 
-        setMessage('Listening for car horn...*');
+        setMessage('Listening for car horn...');
         setListening(true);
 
-        audioContext = new (window.AudioContext || window.webkitAudioContext)();
-        analyser = audioContext.createAnalyser();
-
-        try {
-            microphoneStream = await navigator.mediaDevices.getUserMedia({ audio: true });
-            const source = audioContext.createMediaStreamSource(microphoneStream);
-            source.connect(analyser);
-
-            detectHorn();
-        } catch (error) {
-            setMessage('Could not access microphone*', error);
-            console.error(error);
-        }
+        // Start the sound classification
+        classifierRef.current.classify(gotResults);
     };
 
     const stopListening = () => {
         setListening(false);
         setMessage('Stopped listening');
-        if (microphoneStream) {
-            microphoneStream.getTracks().forEach(track => track.stop());
-        }
-        if (audioContext) {
-            audioContext.close();
-        }
+        // Stop the classifier
+        classifierRef.current.stop();
     };
 
-    const detectHorn = () => {
-        const dataArray = new Float32Array(analyser.fftSize);
-        const checkHorn = () => {
-            analyser.getFloatTimeDomainData(dataArray);
-            // Placeholder logic for detecting car horn. You'll need actual analysis here.
-            const maxAmplitude = Math.max(...dataArray);
-            if (maxAmplitude > 0.2) {  // Threshold for detection
-                playAlarm();
-                setMessage('Car horn detected!');
-            } else {
-                requestAnimationFrame(checkHorn);
-            }
-        };
-        requestAnimationFrame(checkHorn);
+    const gotResults = (error, results) => {
+        if (error) {
+            console.error(error);
+            return;
+        }
+
+        // Assuming the first result is the most confident
+        const label = results[0].label;
+        const confidence = results[0].confidence;
+
+        // Check if the detected sound is a car horn (you may need to train the model for specific sounds)
+        if (label === 'car horn' && confidence > 0.5) { // Adjust confidence threshold as needed
+            playAlarm();
+            setMessage('Car horn detected!');
+        } else {
+            setMessage('Listening for car horn...');
+        }
     };
 
     const playAlarm = () => {
