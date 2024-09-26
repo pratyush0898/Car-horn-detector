@@ -89,12 +89,12 @@ function App() {
 
     return (
         <div>
-            <h1>Car Horn Detector</h1>
-            <p><i>{message}</i></p>
+            <h1 id='heading'>Car Horn Detector</h1>
+            <p id='error'><i>{message}</i></p>
             {!listening ? (
-                <div onClick={startListening}><p>Start Listening</p></div>
+                <div id='button' onClick={startListening}><p>Start Listening</p></div>
             ) : (
-                <div onClick={stopListening}><p>Stop Listening</p></div>
+                <div id='button' onClick={stopListening}><p>Stop Listening</p></div>
             )}
         </div>
     );
